@@ -1,134 +1,126 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { Plugin, MarkdownView, TFile, TFolder } from 'obsidian';
+import { BraveSettingTab } from 'settings';
 
-// Remember to rename these classes and interfaces!
-
-interface MyPluginSettings {
-	mySetting: string;
+interface BravePluginSettings {
+  archivePath: string,
+  withTimestamp: boolean
 }
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default'
+const DEFAULT_SETTINGS: Partial<BravePluginSettings> = {
+  archivePath: 'Archive',
+  withTimestamp: true
 }
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+export default class BravePlugin extends Plugin {
+  settings: BravePluginSettings;
+  // avoid infinite loop
+  justUpdated: boolean
 
-	async onload() {
-		await this.loadSettings();
+  async onload() {
+    await this.loadSettings();
 
-		// This creates an icon in the left ribbon.
-		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
-		});
-		// Perform additional things with the ribbon
-		ribbonIconEl.addClass('my-plugin-ribbon-class');
+    this.justUpdated = false;
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status Bar Text');
+    this.addSettingTab(new BraveSettingTab(this.app, this));
 
-		// This adds a simple command that can be triggered anywhere
-		this.addCommand({
-			id: 'open-sample-modal-simple',
-			name: 'Open sample modal (simple)',
-			callback: () => {
-				new SampleModal(this.app).open();
-			}
-		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'sample-editor-command',
-			name: 'Sample editor command',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				console.log(editor.getSelection());
-				editor.replaceSelection('Sample Editor Command');
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-sample-modal-complex',
-			name: 'Open sample modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
+    this.addCommand({
+      id: 'add-time',
+      name: 'Add Time',
+      editorCallback: async (editor, view) => {
+      }
+    });
 
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
+    this.addCommand({
+      id: 'timestamp-tasks',
+      name: 'Add Timestamp to Tasks',
+      editorCallback: async (_editor, view) => {
+        if (!view.file) {
+          return;
+        }
+        const contentBuffer: string[] = [];
+        const content = await this.app.vault.read(view.file);
+        const lines = content.split("\n");
+        for (const l of lines) {
+          if (l.includes('- [ ]') && (!l.includes('Created'))) {
+            contentBuffer.push(`${l} | Created: ${this.timestamp()}`);
+            continue;
+          }
+          contentBuffer.push(l);
+        }
+        await this.app.vault.modify(view.file, contentBuffer.join('\n'));
+      }
+    });
+
+	this.registerEvent(this.app.metadataCache.on('changed', async (sourceFile, _data, fileCache) => {
+    if (this.justUpdated) {
+      this.justUpdated = false;
+      return;
+    }
+    if (sourceFile.path == this.archivePath()) {
+      return;
+    }
+    const contentBuffer: string[] = [];
+    const completedTaskBuffer: string[] = [];
+		if (sourceFile instanceof TFile) {
+			const content = await this.app.vault.read(sourceFile);
+			const lines = content.split("\n");
+			for (const l of lines) {
+				if (!l.includes('- [x]')) {
+					// not a completed task line
+          contentBuffer.push(l);
+					continue;
 				}
+        completedTaskBuffer.push(l);
+				console.log(l);
 			}
-		});
+    }
 
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
+    // no new completed tasks
+    if (completedTaskBuffer.length === 0) {
+      return;
+    }
 
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
-		});
+    // remove tasks from source file
+    this.justUpdated = true;
+    await this.app.vault.modify(sourceFile, contentBuffer.join('\n'));
 
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
-	}
+    // create or open the archive file
+    let archiveFile = this.app.vault.getAbstractFileByPath(this.archivePath());
+    if (!archiveFile) {
+      archiveFile = await this.app.vault.create(this.archivePath(), '# Task Archive');
+    }
+    if (!(archiveFile instanceof TFile)) {
+      return;
+    }
 
-	onunload() {
+    // add completed tasks to file content
+    let archiveContent = await this.app.vault.read(archiveFile);
+    for (const t of completedTaskBuffer) {
+      let taskContent = `\n${t}`;
+      if (this.settings.withTimestamp) {
+        taskContent += ` | Completed: ${this.timestamp()}`;
+      }
+      archiveContent += taskContent;
+    }
 
-	}
+    // write to file
+    await this.app.vault.modify(archiveFile, archiveContent);
+	}));
+  }
 
-	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-	}
+  async loadSettings() {
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+  }
 
-	async saveSettings() {
-		await this.saveData(this.settings);
-	}
-}
+  async saveSettings() {
+    await this.saveData(this.settings);
+  }
 
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
+  archivePath() {
+    return `${this.settings.archivePath}.md`;
+  }
 
-	onOpen() {
-		const {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
-
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
-	}
-}
-
-class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
-
-	constructor(app: App, plugin: MyPlugin) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
-
-	display(): void {
-		const {containerEl} = this;
-
-		containerEl.empty();
-
-		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
-			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
-				.onChange(async (value) => {
-					this.plugin.settings.mySetting = value;
-					await this.plugin.saveSettings();
-				}));
-	}
+  timestamp() {
+    return new Date().toISOString().replace("T", " ").slice(0, 19);
+  }
 }
