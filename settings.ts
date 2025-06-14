@@ -28,13 +28,39 @@ export class BraveSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName('Todo Path')
+      .setDesc('Path to task todo list (blank for all files)')
+      .addText((text) =>
+        text
+          .setPlaceholder('Todo')
+          .setValue(this.plugin.settings.todoPath)
+          .onChange(async (value) => {
+            this.plugin.settings.todoPath = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
       .setName('With Timestamp')
-      .setDesc('Should tasks include a cretaed and completed timestamp')
+      .setDesc('Should tasks include a created and completed timestamp')
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.withTimestamp)
           .onChange(async (value) => {
             this.plugin.settings.withTimestamp = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Recurring Task File')
+      .setDesc('Where do recurring tasks get aggregated')
+      .addText((text) =>
+        text
+          .setPlaceholder('Tasks')
+          .setValue(this.plugin.settings.recurringTaskPath)
+          .onChange(async (value) => {
+            this.plugin.settings.recurringTaskPath = value;
             await this.plugin.saveSettings();
           })
       );

@@ -3,9 +3,9 @@
 	"name": "Brave Plugin",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
+	"description": "A plugin for my personal needs.",
+	"author": "Basil Eagle",
+	"authorUrl": "https://github.com/EnemigoPython",
 	"fundingUrl": "https://obsidian.md/pricing",
 	"isDesktopOnly": false
 }
