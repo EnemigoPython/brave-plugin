@@ -24,8 +24,12 @@ export default class BravePlugin extends Plugin {
     await this.loadSettings();
 
     this.addRibbonIcon('rocket', 'Aggregate Recurring Tasks', async (evt: MouseEvent) => {
-      await this.aggregateRecurringTasks();
-			new Notice('Recurring Tasks updated');
+      const tasksUpdated = await this.aggregateRecurringTasks();
+      if (tasksUpdated > 0) {
+        new Notice(`${tasksUpdated} Recurring Tasks updated`);
+        return;
+      }
+      new Notice("No Recurring Tasks found")
 		});
 
     this.justUpdated = false;
@@ -36,6 +40,12 @@ export default class BravePlugin extends Plugin {
       id: 'add-recurring-task-time',
       name: 'Add Time to Recurring Tasks',
       editorCallback: async (editor, view) => {
+        const tasksUpdated = await this.aggregateRecurringTasks();
+        if (tasksUpdated > 0) {
+          new Notice(`${tasksUpdated} Recurring Tasks updated`);
+          return;
+        }
+        new Notice("No Recurring Tasks found")
       }
     });
 
@@ -173,7 +183,7 @@ export default class BravePlugin extends Plugin {
       return 0;
     }
 
-    // create or open the todo file
+    // create or open the task file
     let taskFile = this.app.vault.getAbstractFileByPath(this.recurringTaskPath());
     console.log(this.recurringTaskPath());
     if (!taskFile) {
